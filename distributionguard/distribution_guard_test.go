@@ -44,8 +44,11 @@ func TestForkDistribution(t *testing.T) {
 	if !strings.Contains(makefile, "github.com/GamerKhaan/scripts/raw/main/install_core.sh") {
 		t.Fatal("Makefile does not install core from owned scripts")
 	}
-	if !strings.Contains(controller, `const NodeVersion = "0.5.4-awg31.1"`) {
-		t.Fatal("Node runtime version does not identify the owned release")
+	if !strings.Contains(controller, `const NodeVersion = "1.0.0"`) {
+		t.Fatal("Node runtime version does not identify the owned distribution release")
+	}
+	if !strings.Contains(controller, `const NodeProductVersion = "0.5.4-awg31.1"`) {
+		t.Fatal("Node product compatibility version is missing")
 	}
 	if strings.Contains(releaseAssets, "openbsd") {
 		t.Fatal("owned Node binary release still targets unsupported OpenBSD")
