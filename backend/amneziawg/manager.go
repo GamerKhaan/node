@@ -3,6 +3,8 @@ package amneziawg
 
 import (
 	"errors"
+	"log"
+
 	"github.com/amnezia-vpn/amneziawg-go/v3/conn"
 	"github.com/amnezia-vpn/amneziawg-go/v3/device"
 	"github.com/amnezia-vpn/amneziawg-go/v3/tun"
@@ -22,6 +24,7 @@ type Manager struct {
 
 func newManager(c *Config) (m *Manager, err error) {
 	if !embeddedModuleVerified() {
+		log.Print(awgEventLine(awgLogError, awgEventProvenanceRefusal))
 		return nil, errors.New("official embedded AWG module provenance mismatch")
 	}
 	watchdog(15*time.Second, func() { m, err = createManager(c) })

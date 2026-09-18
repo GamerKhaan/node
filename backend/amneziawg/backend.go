@@ -4,13 +4,16 @@ package amneziawg
 import (
 	"context"
 	"errors"
-	"github.com/pasarguard/node/backend"
-	"github.com/pasarguard/node/common"
-	"github.com/pasarguard/node/pkg/stats"
+	"fmt"
 	"log"
+	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pasarguard/node/backend"
+	"github.com/pasarguard/node/common"
+	"github.com/pasarguard/node/pkg/stats"
 )
 
 type AmneziaWG struct {
@@ -36,6 +39,99 @@ type AmneziaWG struct {
 
 var _ backend.Backend = (*AmneziaWG)(nil)
 
+type awgLogLevel string
+
+const (
+	awgLogInfo    awgLogLevel = "info"
+	awgLogWarning awgLogLevel = "warning"
+	awgLogError   awgLogLevel = "error"
+)
+
+type awgLogEvent string
+
+const (
+	awgEventStart             awgLogEvent = "start"
+	awgEventStop              awgLogEvent = "stop"
+	awgEventReconcile         awgLogEvent = "reconcile"
+	awgEventBind              awgLogEvent = "bind"
+	awgEventUnbind            awgLogEvent = "unbind"
+	awgEventPeerUpdate        awgLogEvent = "peer_update"
+	awgEventUAPIError         awgLogEvent = "uapi_error"
+	awgEventProvenanceRefusal awgLogEvent = "provenance_refusal"
+	awgEventReconnect         awgLogEvent = "reconnect"
+	awgEventDisable           awgLogEvent = "disable"
+	awgEventReEnable          awgLogEvent = "re_enable"
+	awgEventAccountingWarning awgLogEvent = "accounting_incomplete"
+	awgEventReconcileRefusal  awgLogEvent = "reconcile_refusal"
+	awgEventManagementFailure awgLogEvent = "management_failure"
+)
+
+type peerChangeSummary struct {
+	added   int
+	removed int
+	updated int
+	total   int
+}
+
+func awgEventLine(level awgLogLevel, event awgLogEvent) string {
+	result := "ok"
+	switch level {
+	case awgLogWarning:
+		result = "warning"
+	case awgLogError:
+		result = "failed"
+	}
+	return fmt.Sprintf("[AWG] [%s] event=%s result=%s", level, event, result)
+}
+
+func summarizePeerChanges(existing, target map[string]peer) peerChangeSummary {
+	summary := peerChangeSummary{total: len(target)}
+	for key, current := range target {
+		previous, ok := existing[key]
+		if !ok {
+			summary.added++
+			continue
+		}
+		if previous.email != current.email || !slices.Equal(previous.ips, current.ips) {
+			summary.updated++
+		}
+	}
+	for key := range existing {
+		if _, ok := target[key]; !ok {
+			summary.removed++
+		}
+	}
+	return summary
+}
+
+func awgPeerChangeLine(summary peerChangeSummary) string {
+	return fmt.Sprintf(
+		"[AWG] [info] event=%s result=ok added=%d removed=%d updated=%d total=%d",
+		awgEventPeerUpdate,
+		summary.added,
+		summary.removed,
+		summary.updated,
+		summary.total,
+	)
+}
+
+func awgReconcileLine(full, restart bool, summary peerChangeSummary) string {
+	mode := "partial"
+	if full {
+		mode = "full"
+	}
+	return fmt.Sprintf(
+		"[AWG] [info] event=%s result=ok mode=%s restart=%t added=%d removed=%d updated=%d total=%d",
+		awgEventReconcile,
+		mode,
+		restart,
+		summary.added,
+		summary.removed,
+		summary.updated,
+		summary.total,
+	)
+}
+
 func newBackend(c *Config, factory func(*Config) (*Manager, error)) *AmneziaWG {
 	return &AmneziaWG{config: c, factory: factory, peers: map[string]peer{}, desired: map[string]peer{}, pending: map[accountingOwner]counters{}, cursors: map[string]runtimeCursor{}, tracker: stats.New(), interfaceStats: stats.NewInterfaceCountersTracker(), logs: make(chan string, 32), startTime: time.Now()}
 }
@@ -50,16 +146,19 @@ func New(c *Config, users []*common.User) (*AmneziaWG, error) {
 	}
 	a.manager, err = a.factory(c)
 	if err != nil {
+		a.emit(awgEventLine(awgLogError, awgEventBind))
 		return nil, err
 	}
+	a.emit(awgEventLine(awgLogInfo, awgEventBind))
 	if err = a.applyLocked(target, true, false); err != nil {
 		a.manager.Close()
+		a.emit(awgEventLine(awgLogInfo, awgEventUnbind))
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
 	go a.watch(ctx)
-	a.emit("AMNEZIAWG in-process backend started")
+	a.emit(awgEventLine(awgLogInfo, awgEventStart))
 	return a, nil
 }
 func (a *AmneziaWG) emit(s string) {
@@ -73,7 +172,7 @@ func (a *AmneziaWG) emit(s string) {
 }
 func (a *AmneziaWG) incomplete() {
 	a.accountingIncomplete = true
-	a.emit("AWG_ACCOUNTING_INCOMPLETE: known samples retained; unsampled interval unavailable")
+	a.emit(awgEventLine(awgLogWarning, awgEventAccountingWarning))
 }
 func (a *AmneziaWG) readyLocked() error {
 	if a.stopped || a.contained || !a.manager.Alive() {
@@ -98,6 +197,7 @@ func (a *AmneziaWG) contain() error {
 	if a.manager != nil {
 		_ = a.manager.Down()
 		a.manager.Close()
+		a.emit(awgEventLine(awgLogInfo, awgEventUnbind))
 		select {
 		case <-a.manager.dev.Wait():
 		default:
@@ -108,7 +208,7 @@ func (a *AmneziaWG) contain() error {
 	a.cursors = map[string]runtimeCursor{}
 	a.tracker = stats.New()
 	a.contained = true
-	a.emit("AWG_DEGRADED_CONTAINED: owned traffic denied; fresh full snapshot required")
+	a.emit(awgEventLine(awgLogError, awgEventDisable))
 	return errors.New("AWG_DEGRADED_CONTAINED; accounting may be incomplete; fresh full snapshot required")
 }
 
@@ -121,28 +221,39 @@ func (a *AmneziaWG) failedMutation(known map[string]peer) error {
 }
 
 func (a *AmneziaWG) applyLocked(target map[string]peer, full, restart bool) error {
+	summary := summarizePeerChanges(a.peers, target)
 	if a.stopped {
+		a.emit(awgEventLine(awgLogWarning, awgEventReconcileRefusal))
 		return errors.New("AWG backend was shut down")
 	}
 	if err := a.admit(target); err != nil {
+		a.emit(awgEventLine(awgLogWarning, awgEventReconcileRefusal))
 		return err
 	}
 	if a.contained && !full {
+		a.emit(awgEventLine(awgLogWarning, awgEventReconcileRefusal))
 		return errors.New("AWG contained: partial mutation refused; full resync required")
 	}
 	a.desired = target
 	if a.contained {
 		if len(target) == 0 {
 			a.peers = map[string]peer{}
+			if summary.added+summary.removed+summary.updated > 0 {
+				a.emit(awgPeerChangeLine(summary))
+			}
+			a.emit(awgReconcileLine(full, restart, summary))
 			return nil
 		}
 		m, err := a.factory(a.config)
 		if err != nil {
+			a.emit(awgEventLine(awgLogError, awgEventBind))
 			return err
 		}
 		a.manager = m
 		a.contained = false
 		a.interfaceStats = stats.NewInterfaceCountersTracker()
+		a.emit(awgEventLine(awgLogInfo, awgEventBind))
+		a.emit(awgEventLine(awgLogInfo, awgEventReEnable))
 	}
 	if !a.manager.Alive() {
 		return a.contain()
@@ -186,6 +297,7 @@ func (a *AmneziaWG) applyLocked(target map[string]peer, full, restart bool) erro
 		}
 		if body != "" {
 			if err = a.manager.Set(body); err != nil {
+				a.emit(awgEventLine(awgLogError, awgEventUAPIError))
 				return a.failedMutation(known)
 			}
 		}
@@ -203,11 +315,14 @@ func (a *AmneziaWG) applyLocked(target map[string]peer, full, restart bool) erro
 	}
 	if restart {
 		if err = a.manager.Down(); err != nil {
+			a.emit(awgEventLine(awgLogError, awgEventReconnect))
 			return a.failedMutation(known)
 		}
 		if err = a.manager.Up(); err != nil {
+			a.emit(awgEventLine(awgLogError, awgEventReconnect))
 			return a.failedMutation(known)
 		}
+		a.emit(awgEventLine(awgLogInfo, awgEventReconnect))
 		after, err = a.manager.Snapshot()
 		if err != nil {
 			return a.contain()
@@ -227,6 +342,10 @@ func (a *AmneziaWG) applyLocked(target map[string]peer, full, restart bool) erro
 		}
 	}
 	a.reserve(target)
+	if summary.added+summary.removed+summary.updated > 0 {
+		a.emit(awgPeerChangeLine(summary))
+	}
+	a.emit(awgReconcileLine(full, restart, summary))
 	return nil
 }
 
@@ -236,6 +355,7 @@ func (a *AmneziaWG) reconcileLocked(ctx context.Context, users []*common.User, f
 	}
 	target, err := desiredPeers(a.config, a.desired, users, full)
 	if err != nil {
+		a.emit(awgEventLine(awgLogWarning, awgEventReconcileRefusal))
 		return err
 	}
 	return a.applyLocked(target, full, restart)
@@ -277,13 +397,16 @@ func (a *AmneziaWG) Shutdown() {
 			if a.sampleLocked() != nil {
 				a.incomplete()
 			}
+			a.manager.Close()
+			a.emit(awgEventLine(awgLogInfo, awgEventUnbind))
+		} else {
+			a.manager.Close()
 		}
-		a.manager.Close()
 	}
 	a.stopped = true
 	a.peers = map[string]peer{}
 	a.cursors = map[string]runtimeCursor{}
-	a.emit("AMNEZIAWG shutdown complete")
+	a.emit(awgEventLine(awgLogInfo, awgEventStop))
 	close(a.logs)
 	a.logsClosed = true
 }

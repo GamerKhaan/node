@@ -35,7 +35,7 @@ func (a *AmneziaWG) GetStats(ctx context.Context, r *common.StatRequest) (*commo
 		}
 	}
 	if a.accountingIncomplete {
-		a.emit("AWG_ACCOUNTING_INCOMPLETE: returning only known attributable samples")
+		a.emit(awgEventLine(awgLogWarning, awgEventAccountingWarning))
 	}
 	switch r.GetType() {
 	case common.StatType_UsersStat:
