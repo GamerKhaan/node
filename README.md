@@ -21,8 +21,10 @@ You can find a full guide in docs https://docs.pasarguard.org/en/node/
 The easiest way to install PasarGuard Node is using our automated installation script:
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/PasarGuard/scripts/raw/main/pg-node.sh)" @ install
+sudo bash -c "$(curl -sL https://github.com/GamerKhaan/scripts/raw/main/pg-node.sh)" @ install
 ```
+
+If an official PasarGuard Node is already installed, the same command adopts it in place and preserves its API key, TLS files, service ports and data directory.
 
 # Donation
 You can help PasarGuard team with your donations, [Click Here](https://donate.pasarguard.org/)
