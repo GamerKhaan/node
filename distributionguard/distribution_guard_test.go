@@ -23,6 +23,7 @@ func TestForkDistribution(t *testing.T) {
 	dockerfileXray := read(t, "Dockerfile.xray")
 	dockerfileWireGuard := read(t, "Dockerfile.wireguard")
 	makefile := read(t, "Makefile")
+	controller := read(t, "controller/controller.go")
 	for name, text := range map[string]string{"release": release, "dev": dev} {
 		if !strings.Contains(text, "IMAGE_NAME: ghcr.io/gamerkhaan/node") {
 			t.Fatalf("%s workflow missing owned image", name)
@@ -41,5 +42,8 @@ func TestForkDistribution(t *testing.T) {
 	}
 	if !strings.Contains(makefile, "github.com/GamerKhaan/scripts/raw/main/install_core.sh") {
 		t.Fatal("Makefile does not install core from owned scripts")
+	}
+	if !strings.Contains(controller, `const NodeVersion = "0.5.4-awg31.1"`) {
+		t.Fatal("Node runtime version does not identify the owned release")
 	}
 }
