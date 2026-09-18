@@ -24,6 +24,7 @@ func TestForkDistribution(t *testing.T) {
 	dockerfileWireGuard := read(t, "Dockerfile.wireguard")
 	makefile := read(t, "Makefile")
 	controller := read(t, "controller/controller.go")
+	releaseAssets := read(t, ".github/workflows/release.yml")
 	for name, text := range map[string]string{"release": release, "dev": dev} {
 		if !strings.Contains(text, "IMAGE_NAME: ghcr.io/gamerkhaan/node") {
 			t.Fatalf("%s workflow missing owned image", name)
@@ -45,5 +46,17 @@ func TestForkDistribution(t *testing.T) {
 	}
 	if !strings.Contains(controller, `const NodeVersion = "0.5.4-awg31.1"`) {
 		t.Fatal("Node runtime version does not identify the owned release")
+	}
+	if strings.Contains(releaseAssets, "openbsd") {
+		t.Fatal("owned Node binary release still targets unsupported OpenBSD")
+	}
+	if !strings.Contains(releaseAssets, "linux") || !strings.Contains(releaseAssets, "arm64") || !strings.Contains(releaseAssets, "amd64") {
+		t.Fatal("owned Node binary release must cover Linux amd64/arm64")
+	}
+	if strings.Contains(releaseAssets, "actions/upload-release-asset@v1") {
+		t.Fatal("owned Node release must not depend on deprecated upload-release-asset action")
+	}
+	if !strings.Contains(releaseAssets, "gh release upload") {
+		t.Fatal("owned Node release must upload assets through gh CLI")
 	}
 }
