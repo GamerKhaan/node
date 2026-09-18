@@ -59,4 +59,7 @@ func TestForkDistribution(t *testing.T) {
 	if !strings.Contains(releaseAssets, "gh release upload") {
 		t.Fatal("owned Node release must upload assets through gh CLI")
 	}
+	if !strings.Contains(releaseAssets, "ref: ${{ github.event.release.tag_name || inputs.tag }}") {
+		t.Fatal("manual Node release must build the exact requested release tag")
+	}
 }
