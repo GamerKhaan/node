@@ -4,12 +4,17 @@ import (
 	"context"
 	"log"
 
+	"google.golang.org/grpc/status"
+
 	"github.com/pasarguard/node/common"
 )
 
 func (s *Service) Start(ctx context.Context, data *common.Backend) (*common.BaseInfoResponse, error) {
 	s.LockControl()
 	defer s.UnlockControl()
+	if err := s.CheckStartCancellation(ctx, data.GetType()); err != nil {
+		return nil, status.FromContextError(err).Err()
+	}
 
 	if s.Backend() != nil {
 		log.Println("New connection, core control access was taken away from previous client.")

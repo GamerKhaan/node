@@ -21,6 +21,10 @@ func (s *Service) Start(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if err := s.CheckStartCancellation(r.Context(), data.GetType()); err != nil {
+		http.Error(w, err.Error(), http.StatusRequestTimeout)
+		return
+	}
 
 	if s.Backend() != nil {
 		log.Println("New connection from ", r.RemoteAddr, " core control access was taken away from previous client.")

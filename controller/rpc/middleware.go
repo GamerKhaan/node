@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"fmt"
+	"github.com/pasarguard/node/backend/amneziawg"
 	"log"
 	"strings"
 
@@ -94,7 +95,12 @@ func CheckBackendMiddleware(s *Service) grpc.UnaryServerInterceptor {
 		handler grpc.UnaryHandler,
 	) (any, error) {
 		if err := checkBackendStatus(s); err != nil {
-			return nil, err
+			awg, ok := s.Backend().(*amneziawg.AmneziaWG)
+			method := info.FullMethod
+			allowed := method == "/service.NodeService/SyncUsers" || method == "/service.NodeService/GetStats" || method == "/service.NodeService/Stop"
+			if !ok || !allowed || !awg.RecoveryControl() {
+				return nil, err
+			}
 		}
 
 		return handler(ctx, req)
@@ -109,7 +115,10 @@ func CheckBackendStreamMiddleware(s *Service) grpc.StreamServerInterceptor {
 		handler grpc.StreamHandler,
 	) error {
 		if err := checkBackendStatus(s); err != nil {
-			return err
+			awg, ok := s.Backend().(*amneziawg.AmneziaWG)
+			if !ok || info.FullMethod != "/service.NodeService/GetLogs" || !awg.RecoveryControl() {
+				return err
+			}
 		}
 
 		return handler(srv, ss)

@@ -17,12 +17,13 @@ require (
 )
 
 require (
+	github.com/amnezia-vpn/amneziawg-go/v3 v3.1.20260814
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/apernet/quic-go v0.59.1-0.20260217092621-db4786c77a22 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/google/btree v1.1.2 // indirect
+	github.com/google/btree v1.1.3 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/josharian/native v1.1.0 // indirect

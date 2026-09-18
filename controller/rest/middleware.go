@@ -1,8 +1,10 @@
 package rest
 
 import (
+	"github.com/pasarguard/node/backend/amneziawg"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
@@ -41,6 +43,13 @@ func (s *Service) checkBackendMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		if !back.Started() {
+			awg, ok := back.(*amneziawg.AmneziaWG)
+			path := strings.TrimSuffix(r.URL.Path, "/")
+			allowed := path == "/users/sync" || path == "/stats" || path == "/stop" || path == "/logs"
+			if ok && allowed && awg.RecoveryControl() {
+				next.ServeHTTP(w, r)
+				return
+			}
 			http.Error(w, "core is not started yet", http.StatusServiceUnavailable)
 			return
 		}

@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/pasarguard/node/backend"
+	"github.com/pasarguard/node/backend/amneziawg"
 	"github.com/pasarguard/node/backend/wireguard"
 	"github.com/pasarguard/node/backend/xray"
 	"github.com/pasarguard/node/common"
@@ -97,6 +98,24 @@ func (c *Controller) UnlockControl() {
 	c.controlMu.Unlock()
 }
 
+// CheckStartCancellation is called with the control lock held, before a Start
+// can disconnect or replace an AWG object. Cancellation after this boundary is
+// not rollback: any mutation already begun must finish synchronously or fail.
+// Ordinary WG/Xray-only transitions retain their existing behavior.
+func (c *Controller) CheckStartCancellation(ctx context.Context, target common.BackendType) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.checkStartCancellationLocked(ctx, target)
+}
+
+func (c *Controller) checkStartCancellationLocked(ctx context.Context, target common.BackendType) error {
+	_, currentAWG := c.backend.(*amneziawg.AmneziaWG)
+	if currentAWG || target == common.BackendType_AMNEZIAWG {
+		return ctx.Err()
+	}
+	return nil
+}
+
 func (c *Controller) NewRequest() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -106,6 +125,11 @@ func (c *Controller) NewRequest() {
 func (c *Controller) StartBackend(ctx context.Context, backend *common.Backend) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	// Also guard direct dispatch and cancellation while waiting for this lock.
+	// The transport guard runs earlier, before its destructive Disconnect.
+	if err := c.checkStartCancellationLocked(ctx, backend.GetType()); err != nil {
+		return err
+	}
 
 	switch backend.GetType() {
 	case common.BackendType_XRAY:
@@ -127,6 +151,16 @@ func (c *Controller) StartBackend(ctx context.Context, backend *common.Backend) 
 		}
 		c.backend = newBackend
 
+	case common.BackendType_AMNEZIAWG:
+		config, err := amneziawg.NewConfig(backend.GetConfig())
+		if err != nil {
+			return err
+		}
+		newBackend, err := amneziawg.New(config, backend.GetUsers())
+		if err != nil {
+			return err
+		}
+		c.backend = newBackend
 	case common.BackendType_WIREGUARD:
 		config, err := wireguard.NewConfig(backend.GetConfig())
 		if err != nil {
