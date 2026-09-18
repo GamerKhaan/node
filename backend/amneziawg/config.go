@@ -166,9 +166,6 @@ func NewConfig(raw string) (*Config, error) {
 			if json.Unmarshal(raw, &v) != nil {
 				return nil, fmt.Errorf("AWG %s requires boolean", key)
 			}
-			if key == "disable_cookies" && v {
-				return nil, errors.New("disabling cookie protection is prohibited")
-			}
 			value = strconv.FormatBool(v)
 		default:
 			return nil, fmt.Errorf("unsupported AWG field %q", key)

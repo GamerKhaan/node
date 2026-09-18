@@ -60,6 +60,21 @@ func TestN08SnapshotBudgetsAndStructure(t *testing.T) {
 		t.Fatal("fragmented valid getter", e)
 	}
 }
+func TestSnapshotVerifyAcceptsDisableCookiesReadback(t *testing.T) {
+	c := parseConfigMap(t, configMap(t))
+	c.deviceUAPI = strings.Replace(c.deviceUAPI, "disable_cookies=false\n", "disable_cookies=true\n", 1)
+	d := fake(c)
+	d.fields["disable_cookies"] = "1"
+	m := &Manager{dev: d}
+	s, err := m.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.verify(c, map[string]peer{}); err != nil {
+		t.Fatalf("disable_cookies=true readback rejected: %v", err)
+	}
+}
+
 func TestN08AdmissionLimits(t *testing.T) {
 	if _, e := NewConfig(strings.Repeat(" ", 64<<10+1)); e == nil {
 		t.Fatal("oversized config")

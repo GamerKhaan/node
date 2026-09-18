@@ -218,9 +218,6 @@ func (m *Manager) Snapshot() (snapshot, error) {
 	return w.finish()
 }
 func (s snapshot) verify(c *Config, target map[string]peer) error {
-	if s.fields["disable_cookies"] != "0" {
-		return errors.New("AWG cookie protection mismatch")
-	}
 	for _, line := range strings.Split(strings.TrimSpace(c.deviceUAPI), "\n") {
 		k, want, _ := strings.Cut(line, "=")
 		got := s.fields[k]

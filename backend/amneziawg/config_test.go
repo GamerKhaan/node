@@ -60,6 +60,19 @@ func TestConfigPreservesZeroFalseAndRange(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigAllowsDisableCookies(t *testing.T) {
+	m := configMap(t)
+	m["awg"].(map[string]any)["disable_cookies"] = true
+	raw, _ := json.Marshal(m)
+	c, err := NewConfig(string(raw))
+	if err != nil {
+		t.Fatalf("disable_cookies=true rejected: %v", err)
+	}
+	if !strings.Contains(c.deviceUAPI, "disable_cookies=true\n") {
+		t.Fatalf("disable_cookies=true missing from UAPI: %q", c.deviceUAPI)
+	}
+}
 func TestConfigRejectsUnsafeInputs(t *testing.T) {
 	tests := []struct {
 		name string
@@ -67,7 +80,6 @@ func TestConfigRejectsUnsafeInputs(t *testing.T) {
 	}{
 		{"interface path", func(m map[string]any) { m["interface_name"] = "../wg0" }},
 		{"unknown field", func(m map[string]any) { m["runtime_command"] = "other" }},
-		{"cookie disable", func(m map[string]any) { m["awg"].(map[string]any)["disable_cookies"] = true }},
 		{"string boolean", func(m map[string]any) { m["awg"].(map[string]any)["random_trailers"] = "false" }},
 		{"null boolean", func(m map[string]any) { m["awg"].(map[string]any)["random_trailers"] = nil }},
 		{"reverse range", func(m map[string]any) { m["awg"].(map[string]any)["h1"] = "42-3" }},
