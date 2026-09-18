@@ -15,7 +15,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} make NAME=main build
 
 FROM alpine:latest
 
-LABEL org.opencontainers.image.source="https://github.com/PasarGuard/node"
+LABEL org.opencontainers.image.source="https://github.com/GamerKhaan/node"
 
 RUN apk update && apk add --no-cache wireguard-tools nftables iproute2
 

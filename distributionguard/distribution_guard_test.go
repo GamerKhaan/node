@@ -20,6 +20,9 @@ func TestForkDistribution(t *testing.T) {
 	release := read(t, ".github/workflows/docker-build.yml")
 	dev := read(t, ".github/workflows/docker-build-dev.yml")
 	dockerfile := read(t, "Dockerfile")
+	dockerfileXray := read(t, "Dockerfile.xray")
+	dockerfileWireGuard := read(t, "Dockerfile.wireguard")
+	makefile := read(t, "Makefile")
 	for name, text := range map[string]string{"release": release, "dev": dev} {
 		if !strings.Contains(text, "IMAGE_NAME: ghcr.io/gamerkhaan/node") {
 			t.Fatalf("%s workflow missing owned image", name)
@@ -28,7 +31,15 @@ func TestForkDistribution(t *testing.T) {
 			t.Fatalf("%s workflow still publishes upstream namespace", name)
 		}
 	}
-	if !strings.Contains(dockerfile, `org.opencontainers.image.source="https://github.com/GamerKhaan/node"`) {
-		t.Fatal("Dockerfile source label is not fork-owned")
+	for name, text := range map[string]string{"Dockerfile": dockerfile, "Dockerfile.xray": dockerfileXray, "Dockerfile.wireguard": dockerfileWireGuard} {
+		if !strings.Contains(text, `org.opencontainers.image.source="https://github.com/GamerKhaan/node"`) {
+			t.Fatalf("%s source label is not fork-owned", name)
+		}
+	}
+	if strings.Contains(makefile, "github.com/PasarGuard/scripts/raw/main/install_core.sh") {
+		t.Fatal("Makefile still installs core from upstream scripts")
+	}
+	if !strings.Contains(makefile, "github.com/GamerKhaan/scripts/raw/main/install_core.sh") {
+		t.Fatal("Makefile does not install core from owned scripts")
 	}
 }
