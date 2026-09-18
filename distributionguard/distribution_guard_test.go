@@ -44,7 +44,7 @@ func TestForkDistribution(t *testing.T) {
 	if !strings.Contains(makefile, "github.com/GamerKhaan/scripts/raw/main/install_core.sh") {
 		t.Fatal("Makefile does not install core from owned scripts")
 	}
-	if !strings.Contains(controller, `const NodeVersion = "1.0.0"`) {
+	if !strings.Contains(controller, `const NodeVersion = "1.0.1"`) {
 		t.Fatal("Node runtime version does not identify the owned distribution release")
 	}
 	if !strings.Contains(controller, `const NodeProductVersion = "0.5.4-awg31.1"`) {
