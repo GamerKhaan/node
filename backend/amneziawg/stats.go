@@ -14,7 +14,7 @@ func (a *AmneziaWG) sampleLocked() error {
 	if err := a.readyLocked(); err != nil {
 		return err
 	}
-	s, err := a.manager.Snapshot()
+	s, err := a.snapshot()
 	if err != nil {
 		return err
 	}

@@ -212,9 +212,17 @@ func (a *AmneziaWG) contain() error {
 	return errors.New("AWG_DEGRADED_CONTAINED; accounting may be incomplete; fresh full snapshot required")
 }
 
+func (a *AmneziaWG) snapshot() (snapshot, error) {
+	s, err := a.manager.Snapshot()
+	if err != nil {
+		a.emit(awgEventLine(awgLogError, awgEventUAPIError))
+	}
+	return s, err
+}
+
 func (a *AmneziaWG) failedMutation(known map[string]peer) error {
 	// Exactly one post-error observation. No replay, rollback or stale restoration.
-	if s, e := a.manager.Snapshot(); e == nil {
+	if s, e := a.snapshot(); e == nil {
 		_ = a.account(s, known)
 	}
 	return a.contain()
@@ -235,6 +243,7 @@ func (a *AmneziaWG) applyLocked(target map[string]peer, full, restart bool) erro
 		return errors.New("AWG contained: partial mutation refused; full resync required")
 	}
 	a.desired = target
+	reEnabling := a.contained && len(target) > 0
 	if a.contained {
 		if len(target) == 0 {
 			a.peers = map[string]peer{}
@@ -253,12 +262,11 @@ func (a *AmneziaWG) applyLocked(target map[string]peer, full, restart bool) erro
 		a.contained = false
 		a.interfaceStats = stats.NewInterfaceCountersTracker()
 		a.emit(awgEventLine(awgLogInfo, awgEventBind))
-		a.emit(awgEventLine(awgLogInfo, awgEventReEnable))
 	}
 	if !a.manager.Alive() {
 		return a.contain()
 	}
-	before, err := a.manager.Snapshot()
+	before, err := a.snapshot()
 	if err != nil {
 		return a.contain()
 	}
@@ -302,7 +310,7 @@ func (a *AmneziaWG) applyLocked(target map[string]peer, full, restart bool) erro
 			}
 		}
 	}
-	after, err := a.manager.Snapshot()
+	after, err := a.snapshot()
 	if err != nil {
 		return a.contain()
 	}
@@ -323,7 +331,7 @@ func (a *AmneziaWG) applyLocked(target map[string]peer, full, restart bool) erro
 			return a.failedMutation(known)
 		}
 		a.emit(awgEventLine(awgLogInfo, awgEventReconnect))
-		after, err = a.manager.Snapshot()
+		after, err = a.snapshot()
 		if err != nil {
 			return a.contain()
 		}
@@ -342,6 +350,9 @@ func (a *AmneziaWG) applyLocked(target map[string]peer, full, restart bool) erro
 		}
 	}
 	a.reserve(target)
+	if reEnabling {
+		a.emit(awgEventLine(awgLogInfo, awgEventReEnable))
+	}
 	if summary.added+summary.removed+summary.updated > 0 {
 		a.emit(awgPeerChangeLine(summary))
 	}
