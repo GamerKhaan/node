@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/pasarguard/node/backend"
+	"github.com/pasarguard/node/backend/wireguard"
 	"github.com/pasarguard/node/common"
+	nodeconfig "github.com/pasarguard/node/config"
 	"github.com/pasarguard/node/pkg/stats"
 )
 
@@ -21,6 +23,9 @@ type AmneziaWG struct {
 	config               *Config
 	manager              *Manager
 	factory              func(*Config) (*Manager, error)
+	nodeConfig           *nodeconfig.Config
+	hostRoutingFactory   func(*nodeconfig.Config, string) func()
+	hostRouting          func()
 	peers                map[string]peer // Last confirmed authorization; empty after containment.
 	desired              map[string]peer // Latest validated intent; never treated as observation.
 	pending              map[accountingOwner]counters
@@ -133,14 +138,38 @@ func awgReconcileLine(full, restart bool, summary peerChangeSummary) string {
 }
 
 func newBackend(c *Config, factory func(*Config) (*Manager, error)) *AmneziaWG {
-	return &AmneziaWG{config: c, factory: factory, peers: map[string]peer{}, desired: map[string]peer{}, pending: map[accountingOwner]counters{}, cursors: map[string]runtimeCursor{}, tracker: stats.New(), interfaceStats: stats.NewInterfaceCountersTracker(), logs: make(chan string, 32), startTime: time.Now()}
+	return &AmneziaWG{
+		config: c, factory: factory,
+		hostRoutingFactory: wireguard.ApplyLinuxHostRouting,
+		peers:              map[string]peer{}, desired: map[string]peer{}, pending: map[accountingOwner]counters{},
+		cursors: map[string]runtimeCursor{}, tracker: stats.New(), interfaceStats: stats.NewInterfaceCountersTracker(),
+		logs: make(chan string, 32), startTime: time.Now(),
+	}
 }
-func New(c *Config, users []*common.User) (*AmneziaWG, error) {
+
+func (a *AmneziaWG) installHostRouting() {
+	a.cleanupHostRouting()
+	if a.hostRoutingFactory == nil || a.config == nil {
+		return
+	}
+	a.hostRouting = a.hostRoutingFactory(a.nodeConfig, a.config.InterfaceName)
+}
+
+func (a *AmneziaWG) cleanupHostRouting() {
+	if a.hostRouting == nil {
+		return
+	}
+	a.hostRouting()
+	a.hostRouting = nil
+}
+
+func New(nodeCfg *nodeconfig.Config, c *Config, users []*common.User) (*AmneziaWG, error) {
 	target, err := desiredPeers(c, nil, users, true)
 	if err != nil {
 		return nil, err
 	}
 	a := newBackend(c, newManager)
+	a.nodeConfig = nodeCfg
 	if err = a.admit(target); err != nil {
 		return nil, err
 	}
@@ -150,7 +179,9 @@ func New(c *Config, users []*common.User) (*AmneziaWG, error) {
 		return nil, err
 	}
 	a.emit(awgEventLine(awgLogInfo, awgEventBind))
+	a.installHostRouting()
 	if err = a.applyLocked(target, true, false); err != nil {
+		a.cleanupHostRouting()
 		a.manager.Close()
 		a.emit(awgEventLine(awgLogInfo, awgEventUnbind))
 		return nil, err
@@ -194,6 +225,7 @@ func (a *AmneziaWG) Logs() <-chan string { return a.logs }
 
 func (a *AmneziaWG) contain() error {
 	a.incomplete()
+	a.cleanupHostRouting()
 	if a.manager != nil {
 		_ = a.manager.Down()
 		a.manager.Close()
@@ -262,6 +294,7 @@ func (a *AmneziaWG) applyLocked(target map[string]peer, full, restart bool) erro
 		a.contained = false
 		a.interfaceStats = stats.NewInterfaceCountersTracker()
 		a.emit(awgEventLine(awgLogInfo, awgEventBind))
+		a.installHostRouting()
 	}
 	if !a.manager.Alive() {
 		return a.contain()
@@ -403,6 +436,7 @@ func (a *AmneziaWG) Shutdown() {
 	if a.cancel != nil {
 		a.cancel()
 	}
+	a.cleanupHostRouting()
 	if a.manager != nil {
 		if !a.contained {
 			if a.sampleLocked() != nil {

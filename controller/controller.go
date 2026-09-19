@@ -19,7 +19,7 @@ import (
 	"github.com/pasarguard/node/pkg/sysstats"
 )
 
-const NodeVersion = "1.0.3"
+const NodeVersion = "1.0.4"
 const NodeProductVersion = "0.5.4-awg31.1"
 
 type Service interface {
@@ -157,7 +157,7 @@ func (c *Controller) StartBackend(ctx context.Context, backend *common.Backend) 
 		if err != nil {
 			return err
 		}
-		newBackend, err := amneziawg.New(config, backend.GetUsers())
+		newBackend, err := amneziawg.New(c.cfg, config, backend.GetUsers())
 		if err != nil {
 			return err
 		}

@@ -47,6 +47,11 @@ const (
 //	ip route add default dev <outIface> table <table>
 //
 // Disable all of this with PG_NODE_WG_HOST_ROUTING=0.
+// ApplyLinuxHostRouting reuses the WireGuard host-routing policy for any owned tunnel interface.
+func ApplyLinuxHostRouting(cfg *config.Config, interfaceName string) func() {
+	return applyLinuxHostRouting(cfg, interfaceName)
+}
+
 func applyLinuxHostRouting(cfg *config.Config, wgInterfaceName string) func() {
 	if cfg != nil && !cfg.WGHostRouting {
 		return nil
