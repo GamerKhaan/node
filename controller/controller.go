@@ -157,7 +157,7 @@ func (c *Controller) StartBackend(ctx context.Context, backend *common.Backend) 
 		if err != nil {
 			return err
 		}
-		newBackend, err := amneziawg.New(config, backend.GetUsers())
+		newBackend, err := amneziawg.New(c.cfg, config, backend.GetUsers())
 		if err != nil {
 			return err
 		}
