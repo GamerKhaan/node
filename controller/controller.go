@@ -19,7 +19,7 @@ import (
 	"github.com/pasarguard/node/pkg/sysstats"
 )
 
-const NodeVersion = "1.0.3"
+const NodeVersion = "1.0.4"
 const NodeProductVersion = "0.5.4-awg31.1"
 
 type Service interface {
